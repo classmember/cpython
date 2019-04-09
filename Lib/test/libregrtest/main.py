@@ -1,5 +1,6 @@
 import datetime
 import faulthandler
+import json
 import locale
 import os
 import platform
@@ -145,8 +146,8 @@ class Regrtest:
         line = f"[{line}] {test}"
 
         # add the system load prefix: "load avg: 1.80 "
-        if hasattr(os, 'getloadavg'):
-            load_avg_1min = os.getloadavg()[0]
+        if self.getloadavg:
+            load_avg_1min = self.getloadavg()
             line = f"load avg: {load_avg_1min:.2f} {line}"
 
         # add the timestamp prefix:  "0:01:05 "
@@ -565,6 +566,9 @@ class Regrtest:
 
         if self.ns.tempdir:
             TEMPDIR = self.ns.tempdir
+        elif self.ns.worker_args:
+            ns_dict, _ = json.loads(self.ns.worker_args)
+            TEMPDIR = ns_dict.get("tempdir") or TEMPDIR
 
         os.makedirs(TEMPDIR, exist_ok=True)
 
@@ -611,6 +615,19 @@ class Regrtest:
         if self.ns.list_cases:
             self.list_cases()
             sys.exit(0)
+
+        self.getloadavg = None
+        # If we're on windows and this is the parent runner (not a worker),
+        # report the load average.
+        if hasattr(os, 'getloadavg'):
+            def getloadavg_1m():
+                return os.getloadavg()[0]
+            self.getloadavg = getloadavg_1m
+        elif sys.platform == 'win32' and (self.ns.worker_args is None):
+            from test.libregrtest.win_utils import WindowsLoadTracker
+
+            load_tracker = WindowsLoadTracker()
+            self.getloadavg = load_tracker.getloadavg
 
         self.run_tests()
         self.display_result()

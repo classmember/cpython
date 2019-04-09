@@ -12,6 +12,7 @@
 
 */
 
+#define PY_SSIZE_T_CLEAN
 #include "Python.h"
 #include "structmember.h"
 #include "windows.h"
@@ -984,10 +985,12 @@ winreg_DeleteKeyEx_impl(PyObject *module, HKEY key,
 
     /* Only available on 64bit platforms, so we must load it
        dynamically. */
+    Py_BEGIN_ALLOW_THREADS
     hMod = GetModuleHandleW(L"advapi32.dll");
     if (hMod)
         pfn = (RDKEFunc)GetProcAddress(hMod,
                                                                    "RegDeleteKeyExW");
+    Py_END_ALLOW_THREADS
     if (!pfn) {
         PyErr_SetString(PyExc_NotImplementedError,
                                         "not implemented on this platform");
@@ -1602,8 +1605,11 @@ winreg_SetValue_impl(PyObject *module, HKEY key, const Py_UNICODE *sub_key,
     long rc;
 
     if (type != REG_SZ) {
-        PyErr_SetString(PyExc_TypeError,
-                        "Type must be winreg.REG_SZ");
+        PyErr_SetString(PyExc_TypeError, "type must be winreg.REG_SZ");
+        return NULL;
+    }
+    if ((size_t)value_length >= PY_DWORD_MAX) {
+        PyErr_SetString(PyExc_OverflowError, "value is too long");
         return NULL;
     }
 
@@ -1714,10 +1720,12 @@ winreg_DisableReflectionKey_impl(PyObject *module, HKEY key)
 
     /* Only available on 64bit platforms, so we must load it
        dynamically.*/
+    Py_BEGIN_ALLOW_THREADS
     hMod = GetModuleHandleW(L"advapi32.dll");
     if (hMod)
         pfn = (RDRKFunc)GetProcAddress(hMod,
                                        "RegDisableReflectionKey");
+    Py_END_ALLOW_THREADS
     if (!pfn) {
         PyErr_SetString(PyExc_NotImplementedError,
                         "not implemented on this platform");
@@ -1757,10 +1765,12 @@ winreg_EnableReflectionKey_impl(PyObject *module, HKEY key)
 
     /* Only available on 64bit platforms, so we must load it
        dynamically.*/
+    Py_BEGIN_ALLOW_THREADS
     hMod = GetModuleHandleW(L"advapi32.dll");
     if (hMod)
         pfn = (RERKFunc)GetProcAddress(hMod,
                                        "RegEnableReflectionKey");
+    Py_END_ALLOW_THREADS
     if (!pfn) {
         PyErr_SetString(PyExc_NotImplementedError,
                         "not implemented on this platform");
@@ -1799,10 +1809,12 @@ winreg_QueryReflectionKey_impl(PyObject *module, HKEY key)
 
     /* Only available on 64bit platforms, so we must load it
        dynamically.*/
+    Py_BEGIN_ALLOW_THREADS
     hMod = GetModuleHandleW(L"advapi32.dll");
     if (hMod)
         pfn = (RQRKFunc)GetProcAddress(hMod,
                                        "RegQueryReflectionKey");
+    Py_END_ALLOW_THREADS
     if (!pfn) {
         PyErr_SetString(PyExc_NotImplementedError,
                         "not implemented on this platform");

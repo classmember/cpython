@@ -6,6 +6,7 @@ import errno
 import re
 import sys
 import traceback
+import warnings
 
 
 def normalize_text(text):
@@ -380,9 +381,17 @@ def collect_time(info_add):
     copy_attributes(info_add, time, 'time.%s', attributes)
 
     if hasattr(time, 'get_clock_info'):
-        for clock in ('time', 'perf_counter'):
-            tinfo = time.get_clock_info(clock)
-            info_add('time.get_clock_info(%s)' % clock, tinfo)
+        for clock in ('clock', 'monotonic', 'perf_counter',
+                      'process_time', 'thread_time', 'time'):
+            try:
+                # prevent DeprecatingWarning on get_clock_info('clock')
+                with warnings.catch_warnings(record=True):
+                    clock_info = time.get_clock_info(clock)
+            except ValueError:
+                # missing clock like time.thread_time()
+                pass
+            else:
+                info_add('time.get_clock_info(%s)' % clock, clock_info)
 
 
 def collect_datetime(info_add):
@@ -520,6 +529,8 @@ def collect_resource(info_add):
         value = resource.getrlimit(key)
         info_add('resource.%s' % name, value)
 
+    call_func(info_add, 'resource.pagesize', resource, 'getpagesize')
+
 
 def collect_test_socket(info_add):
     try:
@@ -587,18 +598,20 @@ def collect_get_config(info_add):
     # Dump global configuration variables, _PyCoreConfig
     # and _PyMainInterpreterConfig
     try:
-        from _testcapi import get_global_config, get_core_config, get_main_config
+        from _testcapi import get_configs
     except ImportError:
         return
 
-    for prefix, get_config_func in (
-        ('global_config', get_global_config),
-        ('core_config', get_core_config),
-        ('main_config', get_main_config),
-    ):
-        config = get_config_func()
+    all_configs = get_configs()
+    for config_type in sorted(all_configs):
+        config = all_configs[config_type]
         for key in sorted(config):
-            info_add('%s[%s]' % (prefix, key), repr(config[key]))
+            info_add('%s[%s]' % (config_type, key), repr(config[key]))
+
+
+def collect_subprocess(info_add):
+    import subprocess
+    copy_attributes(info_add, subprocess, 'subprocess.%s', ('_USE_POSIX_SPAWN',))
 
 
 def collect_info(info):
@@ -630,6 +643,7 @@ def collect_info(info):
         collect_cc,
         collect_gdbm,
         collect_get_config,
+        collect_subprocess,
 
         # Collecting from tests should be last as they have side effects.
         collect_test_socket,

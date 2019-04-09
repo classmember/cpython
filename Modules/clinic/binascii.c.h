@@ -50,14 +50,36 @@ binascii_b2a_uu(PyObject *module, PyObject *const *args, Py_ssize_t nargs, PyObj
 {
     PyObject *return_value = NULL;
     static const char * const _keywords[] = {"", "backtick", NULL};
-    static _PyArg_Parser _parser = {"y*|$i:b2a_uu", _keywords, 0};
+    static _PyArg_Parser _parser = {NULL, _keywords, "b2a_uu", 0};
+    PyObject *argsbuf[2];
+    Py_ssize_t noptargs = nargs + (kwnames ? PyTuple_GET_SIZE(kwnames) : 0) - 1;
     Py_buffer data = {NULL, NULL};
     int backtick = 0;
 
-    if (!_PyArg_ParseStackAndKeywords(args, nargs, kwnames, &_parser,
-        &data, &backtick)) {
+    args = _PyArg_UnpackKeywords(args, nargs, NULL, kwnames, &_parser, 1, 1, 0, argsbuf);
+    if (!args) {
         goto exit;
     }
+    if (PyObject_GetBuffer(args[0], &data, PyBUF_SIMPLE) != 0) {
+        goto exit;
+    }
+    if (!PyBuffer_IsContiguous(&data, 'C')) {
+        _PyArg_BadArgument("b2a_uu", 1, "contiguous buffer", args[0]);
+        goto exit;
+    }
+    if (!noptargs) {
+        goto skip_optional_kwonly;
+    }
+    if (PyFloat_Check(args[1])) {
+        PyErr_SetString(PyExc_TypeError,
+                        "integer argument expected, got float" );
+        goto exit;
+    }
+    backtick = _PyLong_AsInt(args[1]);
+    if (backtick == -1 && PyErr_Occurred()) {
+        goto exit;
+    }
+skip_optional_kwonly:
     return_value = binascii_b2a_uu_impl(module, &data, backtick);
 
 exit:
@@ -117,14 +139,36 @@ binascii_b2a_base64(PyObject *module, PyObject *const *args, Py_ssize_t nargs, P
 {
     PyObject *return_value = NULL;
     static const char * const _keywords[] = {"", "newline", NULL};
-    static _PyArg_Parser _parser = {"y*|$i:b2a_base64", _keywords, 0};
+    static _PyArg_Parser _parser = {NULL, _keywords, "b2a_base64", 0};
+    PyObject *argsbuf[2];
+    Py_ssize_t noptargs = nargs + (kwnames ? PyTuple_GET_SIZE(kwnames) : 0) - 1;
     Py_buffer data = {NULL, NULL};
     int newline = 1;
 
-    if (!_PyArg_ParseStackAndKeywords(args, nargs, kwnames, &_parser,
-        &data, &newline)) {
+    args = _PyArg_UnpackKeywords(args, nargs, NULL, kwnames, &_parser, 1, 1, 0, argsbuf);
+    if (!args) {
         goto exit;
     }
+    if (PyObject_GetBuffer(args[0], &data, PyBUF_SIMPLE) != 0) {
+        goto exit;
+    }
+    if (!PyBuffer_IsContiguous(&data, 'C')) {
+        _PyArg_BadArgument("b2a_base64", 1, "contiguous buffer", args[0]);
+        goto exit;
+    }
+    if (!noptargs) {
+        goto skip_optional_kwonly;
+    }
+    if (PyFloat_Check(args[1])) {
+        PyErr_SetString(PyExc_TypeError,
+                        "integer argument expected, got float" );
+        goto exit;
+    }
+    newline = _PyLong_AsInt(args[1]);
+    if (newline == -1 && PyErr_Occurred()) {
+        goto exit;
+    }
+skip_optional_kwonly:
     return_value = binascii_b2a_base64_impl(module, &data, newline);
 
 exit:
@@ -189,7 +233,7 @@ binascii_rlecode_hqx(PyObject *module, PyObject *arg)
         goto exit;
     }
     if (!PyBuffer_IsContiguous(&data, 'C')) {
-        _PyArg_BadArgument("rlecode_hqx", "contiguous buffer", arg);
+        _PyArg_BadArgument("rlecode_hqx", 0, "contiguous buffer", arg);
         goto exit;
     }
     return_value = binascii_rlecode_hqx_impl(module, &data);
@@ -225,7 +269,7 @@ binascii_b2a_hqx(PyObject *module, PyObject *arg)
         goto exit;
     }
     if (!PyBuffer_IsContiguous(&data, 'C')) {
-        _PyArg_BadArgument("b2a_hqx", "contiguous buffer", arg);
+        _PyArg_BadArgument("b2a_hqx", 0, "contiguous buffer", arg);
         goto exit;
     }
     return_value = binascii_b2a_hqx_impl(module, &data);
@@ -261,7 +305,7 @@ binascii_rledecode_hqx(PyObject *module, PyObject *arg)
         goto exit;
     }
     if (!PyBuffer_IsContiguous(&data, 'C')) {
-        _PyArg_BadArgument("rledecode_hqx", "contiguous buffer", arg);
+        _PyArg_BadArgument("rledecode_hqx", 0, "contiguous buffer", arg);
         goto exit;
     }
     return_value = binascii_rledecode_hqx_impl(module, &data);
@@ -295,8 +339,23 @@ binascii_crc_hqx(PyObject *module, PyObject *const *args, Py_ssize_t nargs)
     unsigned int crc;
     unsigned int _return_value;
 
-    if (!_PyArg_ParseStack(args, nargs, "y*I:crc_hqx",
-        &data, &crc)) {
+    if (!_PyArg_CheckPositional("crc_hqx", nargs, 2, 2)) {
+        goto exit;
+    }
+    if (PyObject_GetBuffer(args[0], &data, PyBUF_SIMPLE) != 0) {
+        goto exit;
+    }
+    if (!PyBuffer_IsContiguous(&data, 'C')) {
+        _PyArg_BadArgument("crc_hqx", 1, "contiguous buffer", args[0]);
+        goto exit;
+    }
+    if (PyFloat_Check(args[1])) {
+        PyErr_SetString(PyExc_TypeError,
+                        "integer argument expected, got float" );
+        goto exit;
+    }
+    crc = (unsigned int)PyLong_AsUnsignedLongMask(args[1]);
+    if (crc == (unsigned int)-1 && PyErr_Occurred()) {
         goto exit;
     }
     _return_value = binascii_crc_hqx_impl(module, &data, crc);
@@ -334,10 +393,29 @@ binascii_crc32(PyObject *module, PyObject *const *args, Py_ssize_t nargs)
     unsigned int crc = 0;
     unsigned int _return_value;
 
-    if (!_PyArg_ParseStack(args, nargs, "y*|I:crc32",
-        &data, &crc)) {
+    if (!_PyArg_CheckPositional("crc32", nargs, 1, 2)) {
         goto exit;
     }
+    if (PyObject_GetBuffer(args[0], &data, PyBUF_SIMPLE) != 0) {
+        goto exit;
+    }
+    if (!PyBuffer_IsContiguous(&data, 'C')) {
+        _PyArg_BadArgument("crc32", 1, "contiguous buffer", args[0]);
+        goto exit;
+    }
+    if (nargs < 2) {
+        goto skip_optional;
+    }
+    if (PyFloat_Check(args[1])) {
+        PyErr_SetString(PyExc_TypeError,
+                        "integer argument expected, got float" );
+        goto exit;
+    }
+    crc = (unsigned int)PyLong_AsUnsignedLongMask(args[1]);
+    if (crc == (unsigned int)-1 && PyErr_Occurred()) {
+        goto exit;
+    }
+skip_optional:
     _return_value = binascii_crc32_impl(module, &data, crc);
     if ((_return_value == (unsigned int)-1) && PyErr_Occurred()) {
         goto exit;
@@ -378,7 +456,7 @@ binascii_b2a_hex(PyObject *module, PyObject *arg)
         goto exit;
     }
     if (!PyBuffer_IsContiguous(&data, 'C')) {
-        _PyArg_BadArgument("b2a_hex", "contiguous buffer", arg);
+        _PyArg_BadArgument("b2a_hex", 0, "contiguous buffer", arg);
         goto exit;
     }
     return_value = binascii_b2a_hex_impl(module, &data);
@@ -416,7 +494,7 @@ binascii_hexlify(PyObject *module, PyObject *arg)
         goto exit;
     }
     if (!PyBuffer_IsContiguous(&data, 'C')) {
-        _PyArg_BadArgument("hexlify", "contiguous buffer", arg);
+        _PyArg_BadArgument("hexlify", 0, "contiguous buffer", arg);
         goto exit;
     }
     return_value = binascii_hexlify_impl(module, &data);
@@ -514,14 +592,32 @@ binascii_a2b_qp(PyObject *module, PyObject *const *args, Py_ssize_t nargs, PyObj
 {
     PyObject *return_value = NULL;
     static const char * const _keywords[] = {"data", "header", NULL};
-    static _PyArg_Parser _parser = {"O&|i:a2b_qp", _keywords, 0};
+    static _PyArg_Parser _parser = {NULL, _keywords, "a2b_qp", 0};
+    PyObject *argsbuf[2];
+    Py_ssize_t noptargs = nargs + (kwnames ? PyTuple_GET_SIZE(kwnames) : 0) - 1;
     Py_buffer data = {NULL, NULL};
     int header = 0;
 
-    if (!_PyArg_ParseStackAndKeywords(args, nargs, kwnames, &_parser,
-        ascii_buffer_converter, &data, &header)) {
+    args = _PyArg_UnpackKeywords(args, nargs, NULL, kwnames, &_parser, 1, 2, 0, argsbuf);
+    if (!args) {
         goto exit;
     }
+    if (!ascii_buffer_converter(args[0], &data)) {
+        goto exit;
+    }
+    if (!noptargs) {
+        goto skip_optional_pos;
+    }
+    if (PyFloat_Check(args[1])) {
+        PyErr_SetString(PyExc_TypeError,
+                        "integer argument expected, got float" );
+        goto exit;
+    }
+    header = _PyLong_AsInt(args[1]);
+    if (header == -1 && PyErr_Occurred()) {
+        goto exit;
+    }
+skip_optional_pos:
     return_value = binascii_a2b_qp_impl(module, &data, header);
 
 exit:
@@ -554,16 +650,66 @@ binascii_b2a_qp(PyObject *module, PyObject *const *args, Py_ssize_t nargs, PyObj
 {
     PyObject *return_value = NULL;
     static const char * const _keywords[] = {"data", "quotetabs", "istext", "header", NULL};
-    static _PyArg_Parser _parser = {"y*|iii:b2a_qp", _keywords, 0};
+    static _PyArg_Parser _parser = {NULL, _keywords, "b2a_qp", 0};
+    PyObject *argsbuf[4];
+    Py_ssize_t noptargs = nargs + (kwnames ? PyTuple_GET_SIZE(kwnames) : 0) - 1;
     Py_buffer data = {NULL, NULL};
     int quotetabs = 0;
     int istext = 1;
     int header = 0;
 
-    if (!_PyArg_ParseStackAndKeywords(args, nargs, kwnames, &_parser,
-        &data, &quotetabs, &istext, &header)) {
+    args = _PyArg_UnpackKeywords(args, nargs, NULL, kwnames, &_parser, 1, 4, 0, argsbuf);
+    if (!args) {
         goto exit;
     }
+    if (PyObject_GetBuffer(args[0], &data, PyBUF_SIMPLE) != 0) {
+        goto exit;
+    }
+    if (!PyBuffer_IsContiguous(&data, 'C')) {
+        _PyArg_BadArgument("b2a_qp", 1, "contiguous buffer", args[0]);
+        goto exit;
+    }
+    if (!noptargs) {
+        goto skip_optional_pos;
+    }
+    if (args[1]) {
+        if (PyFloat_Check(args[1])) {
+            PyErr_SetString(PyExc_TypeError,
+                            "integer argument expected, got float" );
+            goto exit;
+        }
+        quotetabs = _PyLong_AsInt(args[1]);
+        if (quotetabs == -1 && PyErr_Occurred()) {
+            goto exit;
+        }
+        if (!--noptargs) {
+            goto skip_optional_pos;
+        }
+    }
+    if (args[2]) {
+        if (PyFloat_Check(args[2])) {
+            PyErr_SetString(PyExc_TypeError,
+                            "integer argument expected, got float" );
+            goto exit;
+        }
+        istext = _PyLong_AsInt(args[2]);
+        if (istext == -1 && PyErr_Occurred()) {
+            goto exit;
+        }
+        if (!--noptargs) {
+            goto skip_optional_pos;
+        }
+    }
+    if (PyFloat_Check(args[3])) {
+        PyErr_SetString(PyExc_TypeError,
+                        "integer argument expected, got float" );
+        goto exit;
+    }
+    header = _PyLong_AsInt(args[3]);
+    if (header == -1 && PyErr_Occurred()) {
+        goto exit;
+    }
+skip_optional_pos:
     return_value = binascii_b2a_qp_impl(module, &data, quotetabs, istext, header);
 
 exit:
@@ -574,4 +720,4 @@ exit:
 
     return return_value;
 }
-/*[clinic end generated code: output=8ff0cb5717b15d1b input=a9049054013a1b77]*/
+/*[clinic end generated code: output=a4a38e162605aca2 input=a9049054013a1b77]*/

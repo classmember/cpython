@@ -3859,25 +3859,6 @@ exit:
     return res;
 }
 
-static PyObject*
-test_raise_signal(PyObject* self, PyObject *args)
-{
-    int signum, err;
-
-    if (!PyArg_ParseTuple(args, "i:raise_signal", &signum)) {
-        return NULL;
-    }
-
-    err = raise(signum);
-    if (err)
-        return PyErr_SetFromErrno(PyExc_OSError);
-
-    if (PyErr_CheckSignals() < 0)
-        return NULL;
-
-    Py_RETURN_NONE;
-}
-
 /* marshal */
 
 static PyObject*
@@ -4203,6 +4184,10 @@ pymem_buffer_overflow(PyObject *self, PyObject *args)
     /* Deliberate buffer overflow to check that PyMem_Free() detects
        the overflow when debug hooks are installed. */
     buffer = PyMem_Malloc(16);
+    if (buffer == NULL) {
+        PyErr_NoMemory();
+        return NULL;
+    }
     buffer[16] = 'x';
     PyMem_Free(buffer);
 
@@ -4694,27 +4679,9 @@ decode_locale_ex(PyObject *self, PyObject *args)
 
 
 static PyObject *
-get_global_config(PyObject *self, PyObject *Py_UNUSED(args))
+get_configs(PyObject *self, PyObject *Py_UNUSED(args))
 {
-    return _Py_GetGlobalVariablesAsDict();
-}
-
-
-static PyObject *
-get_core_config(PyObject *self, PyObject *Py_UNUSED(args))
-{
-    PyInterpreterState *interp = _PyInterpreterState_Get();
-    const _PyCoreConfig *config = &interp->core_config;
-    return _PyCoreConfig_AsDict(config);
-}
-
-
-static PyObject *
-get_main_config(PyObject *self, PyObject *Py_UNUSED(args))
-{
-    PyInterpreterState *interp = _PyInterpreterState_Get();
-    const _PyMainInterpreterConfig *config = &interp->config;
-    return _PyMainInterpreterConfig_AsDict(config);
+    return _Py_GetConfigsAsDict();
 }
 
 
@@ -4908,8 +4875,6 @@ static PyMethodDef TestMethods[] = {
     {"docstring_with_signature_with_defaults",
         (PyCFunction)test_with_docstring, METH_NOARGS,
         docstring_with_signature_with_defaults},
-    {"raise_signal",
-     (PyCFunction)test_raise_signal, METH_VARARGS},
     {"call_in_temporary_c_thread", call_in_temporary_c_thread, METH_O,
      PyDoc_STR("set_error_class(error_class) -> None")},
     {"pymarshal_write_long_to_file",
@@ -4963,9 +4928,7 @@ static PyMethodDef TestMethods[] = {
     {"bad_get", (PyCFunction)(void(*)(void))bad_get, METH_FASTCALL},
     {"EncodeLocaleEx", encode_locale_ex, METH_VARARGS},
     {"DecodeLocaleEx", decode_locale_ex, METH_VARARGS},
-    {"get_global_config", get_global_config, METH_NOARGS},
-    {"get_core_config", get_core_config, METH_NOARGS},
-    {"get_main_config", get_main_config, METH_NOARGS},
+    {"get_configs", get_configs, METH_NOARGS},
 #ifdef Py_REF_DEBUG
     {"negative_refcount", negative_refcount, METH_NOARGS},
 #endif

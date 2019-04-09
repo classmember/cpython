@@ -51,6 +51,11 @@ OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #include <windows.h>
 #endif
 
+/* Uncomment to display statistics on interned strings at exit when
+   using Valgrind or Insecure++. */
+/* #define INTERNED_STATS 1 */
+
+
 /*[clinic input]
 class str "PyObject *" "&PyUnicode_Type"
 [clinic start generated code]*/
@@ -2578,9 +2583,15 @@ unicode_fromformat_write_cstr(_PyUnicodeWriter *writer, const char *str,
     PyObject *unicode;
     int res;
 
-    length = strlen(str);
-    if (precision != -1)
-        length = Py_MIN(length, precision);
+    if (precision == -1) {
+        length = strlen(str);
+    }
+    else {
+        length = 0;
+        while (length < precision && str[length]) {
+            length++;
+        }
+    }
     unicode = PyUnicode_DecodeUTF8Stateful(str, length, "replace", NULL);
     if (unicode == NULL)
         return -1;
@@ -4872,6 +4883,9 @@ PyUnicode_DecodeUTF8Stateful(const char *s,
         case 2:
         case 3:
         case 4:
+            if (s == end || consumed) {
+                goto End;
+            }
             errmsg = "invalid continuation byte";
             startinpos = s - starts;
             endinpos = startinpos + ch - 1;
@@ -5058,12 +5072,21 @@ _Py_DecodeUTF8Ex(const char *s, Py_ssize_t size, wchar_t **wstr, size_t *wlen,
     return 0;
 }
 
+
 wchar_t*
-_Py_DecodeUTF8_surrogateescape(const char *arg, Py_ssize_t arglen)
+_Py_DecodeUTF8_surrogateescape(const char *arg, Py_ssize_t arglen,
+                               size_t *wlen)
 {
     wchar_t *wstr;
-    int res = _Py_DecodeUTF8Ex(arg, arglen, &wstr, NULL, NULL, 1);
+    int res = _Py_DecodeUTF8Ex(arg, arglen,
+                               &wstr, wlen,
+                               NULL, _Py_ERROR_SURROGATEESCAPE);
     if (res != 0) {
+        /* _Py_DecodeUTF8Ex() must support _Py_ERROR_SURROGATEESCAPE */
+        assert(res != -3);
+        if (wlen) {
+            *wlen = (size_t)res;
+        }
         return NULL;
     }
     return wstr;
@@ -6545,108 +6568,6 @@ PyUnicode_EncodeRawUnicodeEscape(const Py_UNICODE *s,
     return result;
 }
 
-/* --- Unicode Internal Codec ------------------------------------------- */
-
-PyObject *
-_PyUnicode_DecodeUnicodeInternal(const char *s,
-                                 Py_ssize_t size,
-                                 const char *errors)
-{
-    const char *starts = s;
-    Py_ssize_t startinpos;
-    Py_ssize_t endinpos;
-    _PyUnicodeWriter writer;
-    const char *end;
-    const char *reason;
-    PyObject *errorHandler = NULL;
-    PyObject *exc = NULL;
-
-    if (PyErr_WarnEx(PyExc_DeprecationWarning,
-                     "unicode_internal codec has been deprecated",
-                     1))
-        return NULL;
-
-    if (size < 0) {
-        PyErr_BadInternalCall();
-        return NULL;
-    }
-    if (size == 0)
-        _Py_RETURN_UNICODE_EMPTY();
-
-    _PyUnicodeWriter_Init(&writer);
-    if (size / Py_UNICODE_SIZE > PY_SSIZE_T_MAX - 1) {
-        PyErr_NoMemory();
-        goto onError;
-    }
-    writer.min_length = (size + (Py_UNICODE_SIZE - 1)) / Py_UNICODE_SIZE;
-
-    end = s + size;
-    while (s < end) {
-        Py_UNICODE uch;
-        Py_UCS4 ch;
-        if (end - s < Py_UNICODE_SIZE) {
-            endinpos = end-starts;
-            reason = "truncated input";
-            goto error;
-        }
-        /* We copy the raw representation one byte at a time because the
-           pointer may be unaligned (see test_codeccallbacks). */
-        ((char *) &uch)[0] = s[0];
-        ((char *) &uch)[1] = s[1];
-#ifdef Py_UNICODE_WIDE
-        ((char *) &uch)[2] = s[2];
-        ((char *) &uch)[3] = s[3];
-#endif
-        ch = uch;
-#ifdef Py_UNICODE_WIDE
-        /* We have to sanity check the raw data, otherwise doom looms for
-           some malformed UCS-4 data. */
-        if (ch > 0x10ffff) {
-            endinpos = s - starts + Py_UNICODE_SIZE;
-            reason = "illegal code point (> 0x10FFFF)";
-            goto error;
-        }
-#endif
-        s += Py_UNICODE_SIZE;
-#ifndef Py_UNICODE_WIDE
-        if (Py_UNICODE_IS_HIGH_SURROGATE(ch) && end - s >= Py_UNICODE_SIZE)
-        {
-            Py_UNICODE uch2;
-            ((char *) &uch2)[0] = s[0];
-            ((char *) &uch2)[1] = s[1];
-            if (Py_UNICODE_IS_LOW_SURROGATE(uch2))
-            {
-                ch = Py_UNICODE_JOIN_SURROGATES(uch, uch2);
-                s += Py_UNICODE_SIZE;
-            }
-        }
-#endif
-
-        if (_PyUnicodeWriter_WriteCharInline(&writer, ch) < 0)
-            goto onError;
-        continue;
-
-  error:
-        startinpos = s - starts;
-        if (unicode_decode_call_errorhandler_writer(
-                errors, &errorHandler,
-                "unicode_internal", reason,
-                &starts, &end, &startinpos, &endinpos, &exc, &s,
-                &writer))
-            goto onError;
-    }
-
-    Py_XDECREF(errorHandler);
-    Py_XDECREF(exc);
-    return _PyUnicodeWriter_Finish(&writer);
-
-  onError:
-    _PyUnicodeWriter_Dealloc(&writer);
-    Py_XDECREF(errorHandler);
-    Py_XDECREF(exc);
-    return NULL;
-}
-
 /* --- Latin-1 Codec ------------------------------------------------------ */
 
 PyObject *
@@ -7165,15 +7086,21 @@ decode_code_page_strict(UINT code_page,
                         const char *in,
                         int insize)
 {
-    const DWORD flags = decode_code_page_flags(code_page);
+    DWORD flags = MB_ERR_INVALID_CHARS;
     wchar_t *out;
     DWORD outsize;
 
     /* First get the size of the result */
     assert(insize > 0);
-    outsize = MultiByteToWideChar(code_page, flags, in, insize, NULL, 0);
-    if (outsize <= 0)
-        goto error;
+    while ((outsize = MultiByteToWideChar(code_page, flags,
+                                          in, insize, NULL, 0)) <= 0)
+    {
+        if (!flags || GetLastError() != ERROR_INVALID_FLAGS) {
+            goto error;
+        }
+        /* For some code pages (e.g. UTF-7) flags must be set to 0. */
+        flags = 0;
+    }
 
     /* Extend a wchar_t* buffer */
     Py_ssize_t n = *bufsize;   /* Get the current length */
@@ -7211,7 +7138,7 @@ decode_code_page_errors(UINT code_page,
 {
     const char *startin = in;
     const char *endin = in + size;
-    const DWORD flags = decode_code_page_flags(code_page);
+    DWORD flags = MB_ERR_INVALID_CHARS;
     /* Ideally, we should get reason from FormatMessage. This is the Windows
        2000 English version of the message. */
     const char *reason = "No mapping for the Unicode character exists "
@@ -7269,6 +7196,11 @@ decode_code_page_errors(UINT code_page,
             if (outsize > 0)
                 break;
             err = GetLastError();
+            if (err == ERROR_INVALID_FLAGS && flags) {
+                /* For some code pages (e.g. UTF-7) flags must be set to 0. */
+                flags = 0;
+                continue;
+            }
             if (err != ERROR_NO_UNICODE_TRANSLATION
                 && err != ERROR_INSUFFICIENT_BUFFER)
             {
@@ -9381,6 +9313,7 @@ _PyUnicode_InsertThousandsGrouping(
     PyObject *thousands_sep,
     Py_UCS4 *maxchar)
 {
+    min_width = Py_MAX(0, min_width);
     if (writer) {
         assert(digits != NULL);
         assert(maxchar == NULL);
@@ -9391,7 +9324,6 @@ _PyUnicode_InsertThousandsGrouping(
     }
     assert(0 <= d_pos);
     assert(0 <= n_digits);
-    assert(0 <= min_width);
     assert(grouping != NULL);
 
     if (digits != NULL) {
@@ -15193,7 +15125,8 @@ PyTypeObject PyUnicode_Type = {
 
 /* Initialize the Unicode implementation */
 
-int _PyUnicode_Init(void)
+_PyInitError
+_PyUnicode_Init(void)
 {
     /* XXX - move this array to unicodectype.c ? */
     Py_UCS2 linebreak[] = {
@@ -15209,28 +15142,30 @@ int _PyUnicode_Init(void)
 
     /* Init the implementation */
     _Py_INCREF_UNICODE_EMPTY();
-    if (!unicode_empty)
-        Py_FatalError("Can't create empty string");
+    if (!unicode_empty) {
+        return _Py_INIT_ERR("Can't create empty string");
+    }
     Py_DECREF(unicode_empty);
 
-    if (PyType_Ready(&PyUnicode_Type) < 0)
-        Py_FatalError("Can't initialize 'unicode'");
+    if (PyType_Ready(&PyUnicode_Type) < 0) {
+        return _Py_INIT_ERR("Can't initialize unicode type");
+    }
 
     /* initialize the linebreak bloom filter */
     bloom_linebreak = make_bloom_mask(
         PyUnicode_2BYTE_KIND, linebreak,
         Py_ARRAY_LENGTH(linebreak));
 
-    if (PyType_Ready(&EncodingMapType) < 0)
-         Py_FatalError("Can't initialize encoding map type");
-
-    if (PyType_Ready(&PyFieldNameIter_Type) < 0)
-        Py_FatalError("Can't initialize field name iterator type");
-
-    if (PyType_Ready(&PyFormatterIter_Type) < 0)
-        Py_FatalError("Can't initialize formatter iter type");
-
-    return 0;
+    if (PyType_Ready(&EncodingMapType) < 0) {
+         return _Py_INIT_ERR("Can't initialize encoding map type");
+    }
+    if (PyType_Ready(&PyFieldNameIter_Type) < 0) {
+        return _Py_INIT_ERR("Can't initialize field name iterator type");
+    }
+    if (PyType_Ready(&PyFormatterIter_Type) < 0) {
+        return _Py_INIT_ERR("Can't initialize formatter iter type");
+    }
+    return _Py_INIT_OK();
 }
 
 /* Finalize the Unicode implementation */
@@ -15241,18 +15176,6 @@ PyUnicode_ClearFreeList(void)
     return 0;
 }
 
-void
-_PyUnicode_Fini(void)
-{
-    int i;
-
-    Py_CLEAR(unicode_empty);
-
-    for (i = 0; i < 256; i++)
-        Py_CLEAR(unicode_latin1[i]);
-    _PyUnicode_ClearStaticStrings();
-    (void)PyUnicode_ClearFreeList();
-}
 
 void
 PyUnicode_InternInPlace(PyObject **p)
@@ -15317,8 +15240,10 @@ PyUnicode_InternFromString(const char *cp)
     return s;
 }
 
-void
-_Py_ReleaseInternedUnicodeStrings(void)
+
+#if defined(WITH_VALGRIND) || defined(__INSURE__)
+static void
+unicode_release_interned(void)
 {
     PyObject *keys;
     PyObject *s;
@@ -15333,14 +15258,16 @@ _Py_ReleaseInternedUnicodeStrings(void)
         return;
     }
 
-    /* Since _Py_ReleaseInternedUnicodeStrings() is intended to help a leak
+    /* Since unicode_release_interned() is intended to help a leak
        detector, interned unicode strings are not forcibly deallocated;
        rather, we give them their stolen references back, and then clear
        and DECREF the interned dict. */
 
     n = PyList_GET_SIZE(keys);
+#ifdef INTERNED_STATS
     fprintf(stderr, "releasing %" PY_FORMAT_SIZE_T "d interned strings\n",
             n);
+#endif
     for (i = 0; i < n; i++) {
         s = PyList_GET_ITEM(keys, i);
         if (PyUnicode_READY(s) == -1) {
@@ -15363,13 +15290,16 @@ _Py_ReleaseInternedUnicodeStrings(void)
         }
         _PyUnicode_STATE(s).interned = SSTATE_NOT_INTERNED;
     }
+#ifdef INTERNED_STATS
     fprintf(stderr, "total size of all interned strings: "
             "%" PY_FORMAT_SIZE_T "d/%" PY_FORMAT_SIZE_T "d "
             "mortal/immortal\n", mortal_size, immortal_size);
+#endif
     Py_DECREF(keys);
     PyDict_Clear(interned);
     Py_CLEAR(interned);
 }
+#endif
 
 
 /********************* Unicode Iterator **************************/
@@ -15647,6 +15577,33 @@ PyUnicode_AsUnicodeCopy(PyObject *unicode)
     memcpy(copy, u, size);
     return copy;
 }
+
+
+void
+_PyUnicode_Fini(void)
+{
+#if defined(WITH_VALGRIND) || defined(__INSURE__)
+    /* Insure++ is a memory analysis tool that aids in discovering
+     * memory leaks and other memory problems.  On Python exit, the
+     * interned string dictionaries are flagged as being in use at exit
+     * (which it is).  Under normal circumstances, this is fine because
+     * the memory will be automatically reclaimed by the system.  Under
+     * memory debugging, it's a huge source of useless noise, so we
+     * trade off slower shutdown for less distraction in the memory
+     * reports.  -baw
+     */
+    unicode_release_interned();
+#endif /* __INSURE__ */
+
+    Py_CLEAR(unicode_empty);
+
+    for (Py_ssize_t i = 0; i < 256; i++) {
+        Py_CLEAR(unicode_latin1[i]);
+    }
+    _PyUnicode_ClearStaticStrings();
+    (void)PyUnicode_ClearFreeList();
+}
+
 
 /* A _string module, to export formatter_parser and formatter_field_name_split
    to the string.Formatter class implemented in Python. */
